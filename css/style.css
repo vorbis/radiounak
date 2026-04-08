@@ -60,18 +60,19 @@ body {
     margin-top: 25px;
 }
 
-/* ИСПРАВЛЕНО: Обложка стала круглой и адаптивной */
+/* ИСПРАВЛЕНО: Логотип теперь всегда идеальный круг */
 .cover-album {
     width: 250px;
-    max-width: 60%;
+    height: 250px;
+    max-width: 250px;
     margin: 0 auto 20px auto;
     background: url('../img/cover.png') no-repeat;
     background-size: cover;
+    background-position: center;
     border: 3px solid #fefefe;
     box-shadow: 0px 5px 10px 3px rgba(0, 0, 0, 0.4);
     transition: background-image 1s;
     border-radius: 50%;
-    aspect-ratio: 1 / 1;
 }
 
 #currentCoverArt {
@@ -88,7 +89,7 @@ body {
     display: none;
 }
 
-/* ИСПРАВЛЕНО: Добавлен отступ сверху, чтобы текст не налезал на логотип */
+/* ИСПРАВЛЕНО: Название станции — отступы и перенос текста */
 .info-current-song {
     font-family: 'Poppins', sans-serif;
     text-align: center;
@@ -102,6 +103,7 @@ body {
     font-weight: 800;
     text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
     word-break: break-word;
+    line-height: 1.2;
 }
 
 .info-current-song h3 {
@@ -330,11 +332,12 @@ input[type=range]::-ms-thumb {
     text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
 }
 
-/* ИСПРАВЛЕНО: Улучшена адаптация для телефонов */
+/* ИСПРАВЛЕНО: Адаптация для телефонов — ВЕРТИКАЛЬНАЯ ОРИЕНТАЦИЯ */
 @media(max-width: 576px) {
     .cover-album {
         width: 180px;
-        max-width: 50%;
+        height: 180px;
+        max-width: 180px;
     }
     
     .info-current-song h2 {
@@ -342,12 +345,47 @@ input[type=range]::-ms-thumb {
     }
     
     .info-current-song h3 {
-        font-size: 16px;
+        font-size: 14px;
     }
     
     .web-player {
         margin-top: 10px;
         padding: 10px;
+    }
+}
+
+/* НОВЫЙ БЛОК: Адаптация для горизонтальной ориентации телефона */
+@media(max-width: 896px) and (orientation: landscape) {
+    .cover-album {
+        width: 120px;
+        height: 120px;
+        max-width: 120px;
+        margin-bottom: 10px;
+    }
+    
+    .info-current-song {
+        margin-top: 5px;
+    }
+    
+    .info-current-song h2 {
+        font-size: 18px;
+    }
+    
+    .info-current-song h3 {
+        font-size: 12px;
+    }
+    
+    .web-player {
+        margin-top: 5px;
+        padding: 5px;
+    }
+    
+    .play-pause {
+        font-size: 40px;
+    }
+    
+    .volume-icon {
+        font-size: 20px;
     }
 }
 
@@ -387,7 +425,8 @@ input[type=range]::-ms-thumb {
     .cover-album {
         margin: 10px auto;
         width: 320px;
-        max-width: 80%;
+        height: 320px;
+        max-width: 320px;
     }
 
     .logo img {
