@@ -60,20 +60,19 @@ body {
     margin-top: 25px;
 }
 
+/* ИСПРАВЛЕНО: Обложка стала круглой и адаптивной */
 .cover-album {
-    max-width: 80%;
-    margin: auto;
+    width: 250px;
+    max-width: 60%;
+    margin: 0 auto 20px auto;
     background: url('../img/cover.png') no-repeat;
     background-size: cover;
-    border: 2px solid #fefefe;
+    border: 3px solid #fefefe;
     box-shadow: 0px 5px 10px 3px rgba(0, 0, 0, 0.4);
     transition: background-image 1s;
-    border-radius: 10px;
-
-    margin-bottom: 15px;
+    border-radius: 50%;
+    aspect-ratio: 1 / 1;
 }
-
-
 
 #currentCoverArt {
     width: 100%;
@@ -81,8 +80,7 @@ body {
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-     border-radius: 10px;
-  
+    border-radius: 50%;
     transition: background-image 1s;
 }
 
@@ -90,21 +88,24 @@ body {
     display: none;
 }
 
+/* ИСПРАВЛЕНО: Добавлен отступ сверху, чтобы текст не налезал на логотип */
 .info-current-song {
     font-family: 'Poppins', sans-serif;
     text-align: center;
+    margin-top: 20px;
+    padding: 0 15px;
 }
 
 .info-current-song h2 {
-    font-size: 46px;
+    font-size: 32px;
     text-transform: uppercase;
     font-weight: 800;
     text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
-   
+    word-break: break-word;
 }
 
 .info-current-song h3 {
-    font-size: 22px;
+    font-size: 18px;
     font-weight: 600;
     text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
 }
@@ -113,14 +114,12 @@ body {
     text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
     overflow: hidden;
     text-overflow: ellipsis;
-
 }
 
 .current-artist {
     text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
     overflow: hidden;
     text-overflow: ellipsis;
-
 }
 
 .play-pause {
@@ -137,14 +136,12 @@ body {
     font-size: 28px;
     margin-top: -5px;
     text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
-    border: none; /* Adicionado para remover a borda */
+    border: none;
 }
 
 .volume-slide {
     text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
-    
 }
-
 
 .volume-control {
     display: none;
@@ -156,12 +153,12 @@ body {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
     outline: none;
     border-radius: 5px;
-    border: none; /* Adicionado para remover a borda */
+    border: none;
 }
 
 .percentual-volume {
     text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
-    border: none; /* Adicionado para remover a borda */
+    border: none;
 }
 
 .vagalume a {
@@ -287,7 +284,6 @@ input[type=range]::-ms-thumb {
     cursor: pointer;
 }
 
-
 .historic h2 {
     color: #fefefe;
     border-bottom: 2px solid #fefefe;
@@ -296,12 +292,9 @@ input[type=range]::-ms-thumb {
     text-transform: uppercase;
     margin: 10px 0;
     text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);   
-    
 }
 
-
 /* ZONA FONDO CANCIONES SONADAS */
-
 .historic article {
     margin: 5px 0;
     padding: 10px;
@@ -317,20 +310,15 @@ input[type=range]::-ms-thumb {
     background: url('../img/cover.png') no-repeat;
     background-size: cover;
     border: 2px solid #fefefe;
-   
     box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.3);
     transition: background-image 1s;
 }
 
-/* COLOR TEXTO INFO ARTISTA */
 .historic .music-info {
     color: white;
     font-family: 'Poppins', sans-serif;
     text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
 }
-
-
-/* COLOR TEXTO CANCION */
 
 .historic .music-info .song {
     width: 100%;
@@ -342,9 +330,24 @@ input[type=range]::-ms-thumb {
     text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
 }
 
-@media(max-width: 370px) {
+/* ИСПРАВЛЕНО: Улучшена адаптация для телефонов */
+@media(max-width: 576px) {
     .cover-album {
-        max-width: 100%;
+        width: 180px;
+        max-width: 50%;
+    }
+    
+    .info-current-song h2 {
+        font-size: 24px;
+    }
+    
+    .info-current-song h3 {
+        font-size: 16px;
+    }
+    
+    .web-player {
+        margin-top: 10px;
+        padding: 10px;
     }
 }
 
@@ -383,8 +386,8 @@ input[type=range]::-ms-thumb {
 
     .cover-album {
         margin: 10px auto;
-        min-width: 320px;
-        height: 320px;
+        width: 320px;
+        max-width: 80%;
     }
 
     .logo img {
@@ -393,7 +396,7 @@ input[type=range]::-ms-thumb {
     }
 
     .info-current-song {
-        margin-top: 20px;
+        margin-top: 30px;
         text-align: left;
     }
 
@@ -413,12 +416,12 @@ input[type=range]::-ms-thumb {
     background-color: white;
     border: none;
     color: black;
-    padding: 10px 20px; /* Reduzindo o preenchimento */
-    font-size: 14px; /* Reduzindo o tamanho da fonte */
+    padding: 10px 20px;
+    font-size: 14px;
     font-weight: bold;
     cursor: pointer;
     border-radius: 20px;
-    width: auto; /* Largura automática */
+    width: auto;
     transition: transform .2s;
     box-shadow: 1px 3px #30303022;
 }
@@ -438,9 +441,9 @@ input[type=range]::-ms-thumb {
     font-size: 20px; 
     font-weight: bold;
     cursor: pointer;
-    border-radius: 50%;  /* Torna o botão circular */
-    width: 60px;          /* Define uma largura fixa */
-    height: 60px;         /* Define uma altura fixa (igual à largura) */
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
     align-items: center;
     justify-content: center;
     transition: transform .2s;
@@ -454,27 +457,24 @@ input[type=range]::-ms-thumb {
     transform: scale(1.1);
 }
 
-/* Ícone de play */
 .fa-play-circle { 
     color: white; 
-  }
+}
   
-  /* Ícone de pause */
-  .fa-pause-circle { 
+.fa-pause-circle { 
     color: white;
-  }
+}
 
 .close{
     color: white;
-
 }
 
 .fade-out {
     opacity: 0;
-    transition: opacity 0.5s ease-out; /* Ajuste o tempo conforme necessário */
-  }
+    transition: opacity 0.5s ease-out;
+}
   
-  .fade-in {
+.fade-in {
     opacity: 1;
-    transition: opacity 0.5s ease-in; /* Ajuste o tempo conforme necessário */
+    transition: opacity 0.5s ease-in;
 }
