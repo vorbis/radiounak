@@ -1,16 +1,8 @@
 // ========================
-// НАСТРОЙКИ (отредактируйте под себя)
+// НАСТРОЙКИ
 // ========================
 const RADIO_NAME = 'RadioUnak';
 const URL_STREAMING = 'https://drh-node-03.dline-media.com/RadioUnak';
-
-// Показывать/скрывать элементы интерфейса
-const SHOW_VOLUME = true;
-const SHOW_PLAYLIST = true;
-
-// Тексты интерфейса
-const LIVE_TEXT = 'ЭФИР';
-const NOW_PLAYING = 'Сейчас играет';
 
 // ========================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
@@ -18,32 +10,30 @@ const NOW_PLAYING = 'Сейчас играет';
 let audioPlayer = null;
 let isPlaying = false;
 let songHistory = [];
-let currentSong = { title: 'Неизвестно', artist: '' };
 
 // ========================
-// ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ
+// ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ
 // ========================
 document.addEventListener('DOMContentLoaded', () => {
     initAudio();
     initEventListeners();
     loadHistoryFromStorage();
-    updateUI();
+    updateSongInfo(); // первое обновление информации о треке
 });
 
 function initAudio() {
     // Создаём аудиоплеер
     audioPlayer = new Audio(URL_STREAMING);
-    audioPlayer.volume = 0.8;
     
-    // При получении метаданных обновляем информацию о треке
-    audioPlayer.addEventListener('loadedmetadata', () => {
-        updateSongInfo();
-    });
+    // Устанавливаем громкость из ползунка (если он есть)
+    const volumeSlider = document.getElementById('volume');
+    if (volumeSlider) {
+        audioPlayer.volume = volumeSlider.value / 100;
+    } else {
+        audioPlayer.volume = 0.8;
+    }
     
-    // Периодическое обновление (каждые 5 секунд)
-    setInterval(updateSongInfo, 5000);
-    
-    // Автоматическое переподключение при ошибках
+    // При ошибке потока — пробуем переподключиться
     audioPlayer.addEventListener('error', () => {
         console.log('Ошибка потока, переподключение...');
         if (isPlaying) {
@@ -52,89 +42,77 @@ function initAudio() {
             }, 3000);
         }
     });
+    
+    // Когда поток загружен, обновляем информацию о треке
+    audioPlayer.addEventListener('loadedmetadata', () => {
+        updateSongInfo();
+    });
+    
+    // Периодическое обновление метаданных (каждые 10 секунд)
+    setInterval(updateSongInfo, 10000);
 }
 
 function initEventListeners() {
-    // КНОПКА PLAY/PAUSE — самое главное!
-    const playPauseBtn = document.getElementById('playPauseBtn');
-    if (playPauseBtn) {
-        playPauseBtn.addEventListener('click', togglePlayPause);
+    // ===== КНОПКА PLAY/PAUSE =====
+    const playBtn = document.getElementById('playerButton');
+    if (playBtn) {
+        playBtn.addEventListener('click', togglePlay);
     }
     
-    // Кнопка громкости
-    const volumeBtn = document.getElementById('volumeBtn');
-    const volumeSlider = document.getElementById('volumeSlider');
-    const volumePercent = document.getElementById('volumePercent');
+    // ===== ПОЛЗУНОК ГРОМКОСТИ =====
+    const volumeSlider = document.getElementById('volume');
+    const volIndicator = document.getElementById('volIndicator');
     
-    if (volumeBtn && volumeSlider) {
-        volumeBtn.addEventListener('click', () => {
-            const control = document.querySelector('.volume-control');
-            if (control) control.style.display = control.style.display === 'none' ? 'flex' : 'none';
-        });
-        
+    if (volumeSlider) {
         volumeSlider.addEventListener('input', (e) => {
             const val = e.target.value;
-            audioPlayer.volume = val / 100;
-            if (volumePercent) volumePercent.textContent = `${val}%`;
+            if (audioPlayer) audioPlayer.volume = val / 100;
+            if (volIndicator) volIndicator.textContent = val;
         });
-    }
-    
-    // Кнопка истории
-    const historyBtn = document.getElementById('showHistoryBtn');
-    if (historyBtn) {
-        historyBtn.addEventListener('click', showHistory);
-    }
-    
-    // Закрытие модального окна истории
-    const closeBtn = document.querySelector('.close');
-    const historyModal = document.getElementById('historyModal');
-    if (closeBtn && historyModal) {
-        closeBtn.addEventListener('click', () => {
-            historyModal.style.display = 'none';
-        });
-        window.addEventListener('click', (e) => {
-            if (e.target === historyModal) historyModal.style.display = 'none';
-        });
+        
+        // Устанавливаем начальное отображение громкости
+        if (volIndicator) volIndicator.textContent = volumeSlider.value;
     }
 }
 
 // ========================
-// УПРАВЛЕНИЕ ВОСПРОИЗВЕДЕНИЕМ
+// ФУНКЦИЯ ВОСПРОИЗВЕДЕНИЯ/ПАУЗЫ (вызывается из onclick)
 // ========================
-function togglePlayPause() {
-    const playPauseBtn = document.getElementById('playPauseBtn');
-    const liveIndicator = document.getElementById('liveIndicator');
+window.togglePlay = function() {
+    const playBtn = document.getElementById('playerButton');
     
     if (isPlaying) {
         // Пауза
         audioPlayer.pause();
         isPlaying = false;
-        if (playPauseBtn) playPauseBtn.innerHTML = '<i class="fas fa-play-circle"></i>';
-        if (liveIndicator) liveIndicator.classList.remove('active');
+        if (playBtn) {
+            playBtn.className = 'fa fa-play-circle';
+        }
     } else {
         // Воспроизведение
         audioPlayer.play()
             .then(() => {
                 isPlaying = true;
-                if (playPauseBtn) playPauseBtn.innerHTML = '<i class="fas fa-pause-circle"></i>';
-                if (liveIndicator) liveIndicator.classList.add('active');
+                if (playBtn) {
+                    playBtn.className = 'fa fa-pause-circle';
+                }
             })
             .catch(error => {
                 console.error('Ошибка воспроизведения:', error);
-                alert('Не удалось подключиться к радиостанции. Проверьте интернет или URL потока.');
+                alert('Не удалось подключиться к радиостанции.\nПроверьте интернет или URL потока.');
             });
     }
-}
+};
 
 // ========================
-// ИНФОРМАЦИЯ О ТРЕКЕ
+// ИНФОРМАЦИЯ О ТРЕКЕ (метаданные)
 // ========================
 function updateSongInfo() {
-    // Пытаемся получить метаданные через fetch
+    // Пытаемся получить метаданные через fetch с заголовком Icy-MetaData
     fetch(URL_STREAMING, { headers: { 'Icy-MetaData': '1' } })
         .then(response => {
             const icyTitle = response.headers.get('icy-title');
-            if (icyTitle && icyTitle !== RADIO_NAME) {
+            if (icyTitle && icyTitle !== RADIO_NAME && icyTitle !== '') {
                 parseAndSetSong(icyTitle);
             }
         })
@@ -145,6 +123,7 @@ function parseAndSetSong(metadata) {
     let title = metadata;
     let artist = '';
     
+    // Разбираем формат "Исполнитель - Название"
     if (metadata.includes(' - ')) {
         const parts = metadata.split(' - ');
         artist = parts[0];
@@ -155,25 +134,24 @@ function parseAndSetSong(metadata) {
         title = parts[1];
     }
     
-    // Если трек изменился — добавляем в историю
-    if (title !== currentSong.title && title !== RADIO_NAME && title !== '') {
-        addToHistory(title, artist);
-        currentSong.title = title;
-        currentSong.artist = artist;
-    }
-    
     // Обновляем отображение на странице
     const currentSongEl = document.getElementById('currentSong');
     const currentArtistEl = document.getElementById('currentArtist');
+    
     if (currentSongEl) currentSongEl.textContent = title;
-    if (currentArtistEl) currentArtistEl.textContent = artist;
+    if (currentArtistEl) currentArtistEl.textContent = artist || '—';
+    
+    // Добавляем в историю, если трек новый
+    if (title !== 'Song' && title !== '' && title !== RADIO_NAME) {
+        addToHistory(title, artist);
+    }
 }
 
 // ========================
-// ИСТОРИЯ ТРЕКОВ
+// ИСТОРИЯ ПРОСЛУШАННЫХ ТРЕКОВ
 // ========================
 function addToHistory(songTitle, songArtist) {
-    if (!songTitle || songTitle === 'Неизвестно' || songTitle === RADIO_NAME) return;
+    if (!songTitle || songTitle === 'Song' || songTitle === RADIO_NAME) return;
     
     const song = {
         title: songTitle,
@@ -181,70 +159,71 @@ function addToHistory(songTitle, songArtist) {
         timestamp: new Date().toLocaleTimeString()
     };
     
-    songHistory.unshift(song);
-    if (songHistory.length > 20) songHistory.pop();
+    // Проверяем, не дублируется ли последний трек
+    if (songHistory.length > 0 && songHistory[0].title === songTitle) return;
     
+    songHistory.unshift(song);
+    
+    // Ограничиваем историю 8 треками (по количеству мест в HTML)
+    if (songHistory.length > 8) songHistory.pop();
+    
+    // Сохраняем в localStorage
     localStorage.setItem('radio_song_history', JSON.stringify(songHistory));
+    
+    // Обновляем отображение истории
     renderHistory();
 }
 
 function loadHistoryFromStorage() {
     const stored = localStorage.getItem('radio_song_history');
-    if (stored) songHistory = JSON.parse(stored);
+    if (stored) {
+        songHistory = JSON.parse(stored);
+        renderHistory();
+    }
 }
 
 function renderHistory() {
-    const container = document.getElementById('historyContainer');
-    if (!container) return;
+    const historyContainer = document.getElementById('historicSong');
+    if (!historyContainer) return;
     
-    container.innerHTML = '';
+    // Очищаем контейнер, но сохраняем структуру (оставляем пустые <article>)
+    const articles = historyContainer.querySelectorAll('article');
     
-    if (songHistory.length === 0) {
-        container.innerHTML = '<p class="text-center">История пока пуста</p>';
-        return;
-    }
-    
-    songHistory.forEach(song => {
-        const el = document.createElement('div');
-        el.className = 'historic-item';
-        el.innerHTML = `
-            <div class="cover-historic" style="background-image: url('img/cover.png');"></div>
-            <div class="music-info">
-                <div class="song">${escapeHtml(song.title)}</div>
-                <div class="artist">${escapeHtml(song.artist) || '—'}</div>
-                <div class="time">${song.timestamp}</div>
-            </div>
-        `;
-        container.appendChild(el);
-    });
-}
-
-function showHistory() {
-    renderHistory();
-    const modal = document.getElementById('historyModal');
-    if (modal) modal.style.display = 'block';
-}
-
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
-function updateUI() {
-    const liveIndicator = document.getElementById('liveIndicator');
-    if (liveIndicator) liveIndicator.textContent = LIVE_TEXT;
-    
-    if (!SHOW_VOLUME) {
-        const volContainer = document.querySelector('.volume-container');
-        if (volContainer) volContainer.style.display = 'none';
-    }
-    if (!SHOW_PLAYLIST) {
-        const historyBtn = document.getElementById('showHistoryBtn');
-        if (historyBtn) historyBtn.style.display = 'none';
+    for (let i = 0; i < articles.length; i++) {
+        const article = articles[i];
+        const song = songHistory[i];
+        
+        if (song) {
+            // Заполняем данными из истории
+            const songDiv = article.querySelector('.song');
+            const artistDiv = article.querySelector('.artist');
+            const coverDiv = article.querySelector('.cover-historic');
+            
+            if (songDiv) songDiv.textContent = song.title;
+            if (artistDiv) artistDiv.textContent = song.artist || '—';
+            if (coverDiv) coverDiv.style.backgroundImage = "url('img/cover.png')";
+        } else {
+            // Пустые слоты
+            const songDiv = article.querySelector('.song');
+            const artistDiv = article.querySelector('.artist');
+            
+            if (songDiv) songDiv.textContent = '—';
+            if (artistDiv) artistDiv.textContent = '—';
+        }
     }
 }
+
+// ========================
+// УДАЛЯЕМ ФУНКЦИОНАЛ ТЕКСТОВ ПЕСЕН (LETRA)
+// ========================
+// Отключаем кнопку "LETRA", чтобы ничего не происходило при клике
+document.addEventListener('DOMContentLoaded', () => {
+    const lyricsLink = document.querySelector('.lyrics');
+    if (lyricsLink) {
+        lyricsLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Ничего не делаем — функционал текстов песен отключён
+            console.log('Функция текстов песен отключена');
+        });
+    }
+});
