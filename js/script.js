@@ -5,14 +5,10 @@ const RADIO_NAME = 'RadioUnak';
 const URL_STREAMING = 'https://drh-node-03.dline-media.com/RadioUnak';
 
 // Показывать/скрывать элементы интерфейса
-const SHOW_PLAYER = true;
-const SHOW_BACKGROUND_IMAGE = true;
-const SHOW_COVER = true;
-const URL_COVER = 'img/cover.png';
 const SHOW_VOLUME = true;
-const SHOW_PLAYLIST = true; // история песен
+const SHOW_PLAYLIST = true;
 
-// Тексты интерфейса (теперь на русском)
+// Тексты интерфейса
 const LIVE_TEXT = 'ЭФИР';
 const NOW_PLAYING = 'Сейчас играет';
 
@@ -20,162 +16,132 @@ const NOW_PLAYING = 'Сейчас играет';
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
 // ========================
 let audioPlayer = null;
-let currentVolume = 80;
 let isPlaying = false;
 let songHistory = [];
-let currentSong = {
-    title: 'Неизвестно',
-    artist: ''
-};
-
-// DOM элементы
-let playPauseBtn, volumeBtn, volumeSlider, volumePercent, historyContainer, historyModal, currentSongEl, currentArtistEl, liveIndicator;
+let currentSong = { title: 'Неизвестно', artist: '' };
 
 // ========================
-// ИНИЦИАЛИЗАЦИЯ ПЛЕЕРА
+// ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ
 // ========================
 document.addEventListener('DOMContentLoaded', () => {
-    initElements();
     initAudio();
     initEventListeners();
     loadHistoryFromStorage();
     updateUI();
 });
 
-function initElements() {
-    playPauseBtn = document.getElementById('playPauseBtn');
-    volumeBtn = document.getElementById('volumeBtn');
-    volumeSlider = document.getElementById('volumeSlider');
-    volumePercent = document.getElementById('volumePercent');
-    historyContainer = document.getElementById('historyContainer');
-    historyModal = document.getElementById('historyModal');
-    currentSongEl = document.getElementById('currentSong');
-    currentArtistEl = document.getElementById('currentArtist');
-    liveIndicator = document.getElementById('liveIndicator');
-}
-
 function initAudio() {
+    // Создаём аудиоплеер
     audioPlayer = new Audio(URL_STREAMING);
-    audioPlayer.volume = currentVolume / 100;
+    audioPlayer.volume = 0.8;
     
-    // Отслеживаем метаданные потока (название трека)
+    // При получении метаданных обновляем информацию о треке
     audioPlayer.addEventListener('loadedmetadata', () => {
         updateSongInfo();
     });
     
-    // Периодически обновляем информацию о треке (каждые 5 секунд)
+    // Периодическое обновление (каждые 5 секунд)
     setInterval(updateSongInfo, 5000);
     
-    // Обработка окончания потока (переподключение)
-    audioPlayer.addEventListener('ended', () => {
+    // Автоматическое переподключение при ошибках
+    audioPlayer.addEventListener('error', () => {
+        console.log('Ошибка потока, переподключение...');
         if (isPlaying) {
             setTimeout(() => {
-                audioPlayer.play().catch(e => console.log('Auto-reconnect failed:', e));
-            }, 1000);
-        }
-    });
-    
-    // Обработка ошибок
-    audioPlayer.addEventListener('error', (e) => {
-        console.error('Audio error:', e);
-        if (isPlaying) {
-            setTimeout(() => {
-                audioPlayer.play().catch(e => console.log('Reconnect failed:', e));
+                audioPlayer.play().catch(e => console.log('Ошибка переподключения:', e));
             }, 3000);
         }
     });
 }
 
 function initEventListeners() {
-    playPauseBtn.addEventListener('click', togglePlayPause);
-    volumeBtn.addEventListener('click', toggleVolumeSlider);
-    volumeSlider.addEventListener('input', updateVolume);
+    // КНОПКА PLAY/PAUSE — самое главное!
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    if (playPauseBtn) {
+        playPauseBtn.addEventListener('click', togglePlayPause);
+    }
+    
+    // Кнопка громкости
+    const volumeBtn = document.getElementById('volumeBtn');
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volumePercent = document.getElementById('volumePercent');
+    
+    if (volumeBtn && volumeSlider) {
+        volumeBtn.addEventListener('click', () => {
+            const control = document.querySelector('.volume-control');
+            if (control) control.style.display = control.style.display === 'none' ? 'flex' : 'none';
+        });
+        
+        volumeSlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            audioPlayer.volume = val / 100;
+            if (volumePercent) volumePercent.textContent = `${val}%`;
+        });
+    }
+    
+    // Кнопка истории
+    const historyBtn = document.getElementById('showHistoryBtn');
+    if (historyBtn) {
+        historyBtn.addEventListener('click', showHistory);
+    }
     
     // Закрытие модального окна истории
-    document.querySelector('.close').addEventListener('click', () => {
-        historyModal.style.display = 'none';
-    });
-    
-    window.addEventListener('click', (e) => {
-        if (e.target === historyModal) {
+    const closeBtn = document.querySelector('.close');
+    const historyModal = document.getElementById('historyModal');
+    if (closeBtn && historyModal) {
+        closeBtn.addEventListener('click', () => {
             historyModal.style.display = 'none';
-        }
-    });
+        });
+        window.addEventListener('click', (e) => {
+            if (e.target === historyModal) historyModal.style.display = 'none';
+        });
+    }
 }
 
 // ========================
-// ОСНОВНЫЕ ФУНКЦИИ ПЛЕЕРА
+// УПРАВЛЕНИЕ ВОСПРОИЗВЕДЕНИЕМ
 // ========================
 function togglePlayPause() {
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const liveIndicator = document.getElementById('liveIndicator');
+    
     if (isPlaying) {
+        // Пауза
         audioPlayer.pause();
         isPlaying = false;
-        playPauseBtn.innerHTML = '<i class="fas fa-play-circle"></i>';
-        liveIndicator.classList.remove('active');
+        if (playPauseBtn) playPauseBtn.innerHTML = '<i class="fas fa-play-circle"></i>';
+        if (liveIndicator) liveIndicator.classList.remove('active');
     } else {
-        audioPlayer.play().catch(error => {
-            console.error('Playback error:', error);
-            alert('Не удалось воспроизвести поток. Проверьте подключение к интернету.');
-        });
-        isPlaying = true;
-        playPauseBtn.innerHTML = '<i class="fas fa-pause-circle"></i>';
-        liveIndicator.classList.add('active');
-    }
-}
-
-function updateVolume() {
-    currentVolume = volumeSlider.value;
-    audioPlayer.volume = currentVolume / 100;
-    volumePercent.textContent = `${currentVolume}%`;
-}
-
-function toggleVolumeSlider() {
-    const slider = document.querySelector('.volume-control');
-    if (slider.style.display === 'none' || !slider.style.display) {
-        slider.style.display = 'flex';
-    } else {
-        slider.style.display = 'none';
+        // Воспроизведение
+        audioPlayer.play()
+            .then(() => {
+                isPlaying = true;
+                if (playPauseBtn) playPauseBtn.innerHTML = '<i class="fas fa-pause-circle"></i>';
+                if (liveIndicator) liveIndicator.classList.add('active');
+            })
+            .catch(error => {
+                console.error('Ошибка воспроизведения:', error);
+                alert('Не удалось подключиться к радиостанции. Проверьте интернет или URL потока.');
+            });
     }
 }
 
 // ========================
-// ИНФОРМАЦИЯ О ТРЕКЕ (метаданные из потока)
+// ИНФОРМАЦИЯ О ТРЕКЕ
 // ========================
 function updateSongInfo() {
-    // Пытаемся извлечь метаданные из потока
-    // В большинстве случаев метаданные приходят в виде текста "Artist - Title"
-    let songTitle = 'Неизвестно';
-    let songArtist = '';
-    
-    // Способ 1: если аудиоплеер предоставляет метаданные
-    if (audioPlayer.src && audioPlayer.textTracks) {
-        // Не все браузеры поддерживают, поэтому используем альтернативный способ
-    }
-    
-    // Способ 2: делаем запрос к серверу потока для получения Icecast-метаданных
+    // Пытаемся получить метаданные через fetch
     fetch(URL_STREAMING, { headers: { 'Icy-MetaData': '1' } })
         .then(response => {
-            const icyName = response.headers.get('icy-name');
-            const icyGenre = response.headers.get('icy-genre');
-            const icyBr = response.headers.get('icy-br');
-            
-            // Иногда название трека приходит в заголовке icy-title
             const icyTitle = response.headers.get('icy-title');
             if (icyTitle && icyTitle !== RADIO_NAME) {
                 parseAndSetSong(icyTitle);
             }
         })
-        .catch(e => console.log('Could not fetch metadata:', e));
-    
-    // Способ 3: если метаданные не пришли, оставляем "Неизвестно"
-    if (currentSong.title === 'Неизвестно') {
-        currentSongEl.textContent = currentSong.title;
-        currentArtistEl.textContent = '';
-    }
+        .catch(e => console.log('Не удалось получить метаданные:', e));
 }
 
 function parseAndSetSong(metadata) {
-    // Ожидаемый формат: "Исполнитель - Название"
     let title = metadata;
     let artist = '';
     
@@ -189,117 +155,96 @@ function parseAndSetSong(metadata) {
         title = parts[1];
     }
     
-    // Если название песни изменилось — добавляем в историю
-    if (title !== currentSong.title) {
+    // Если трек изменился — добавляем в историю
+    if (title !== currentSong.title && title !== RADIO_NAME && title !== '') {
         addToHistory(title, artist);
+        currentSong.title = title;
+        currentSong.artist = artist;
     }
     
-    currentSong.title = title;
-    currentSong.artist = artist;
-    
-    currentSongEl.textContent = title;
-    currentArtistEl.textContent = artist;
-    
-    // Обновляем фон (если есть функция смены обложки по треку)
-    updateBackgroundForSong(title);
-}
-
-function updateBackgroundForSong(songTitle) {
-    // Опционально: можно менять фон или обложку в зависимости от трека
-    // Пока просто заглушка
-    if (SHOW_BACKGROUND_IMAGE) {
-        // Можно добавить логику смены фона
-    }
+    // Обновляем отображение на странице
+    const currentSongEl = document.getElementById('currentSong');
+    const currentArtistEl = document.getElementById('currentArtist');
+    if (currentSongEl) currentSongEl.textContent = title;
+    if (currentArtistEl) currentArtistEl.textContent = artist;
 }
 
 // ========================
-// ИСТОРИЯ ПРОСЛУШАННЫХ ТРЕКОВ
+// ИСТОРИЯ ТРЕКОВ
 // ========================
 function addToHistory(songTitle, songArtist) {
-    if (!songTitle || songTitle === 'Неизвестно') return;
+    if (!songTitle || songTitle === 'Неизвестно' || songTitle === RADIO_NAME) return;
     
     const song = {
         title: songTitle,
-        artist: songArtist,
+        artist: songArtist || '',
         timestamp: new Date().toLocaleTimeString()
     };
     
-    // Добавляем в начало, чтобы последний трек был сверху
     songHistory.unshift(song);
+    if (songHistory.length > 20) songHistory.pop();
     
-    // Ограничиваем историю 20 треками
-    if (songHistory.length > 20) {
-        songHistory.pop();
-    }
-    
-    // Сохраняем в localStorage
     localStorage.setItem('radio_song_history', JSON.stringify(songHistory));
-    
-    // Обновляем отображение истории, если модальное окно открыто
     renderHistory();
 }
 
 function loadHistoryFromStorage() {
     const stored = localStorage.getItem('radio_song_history');
-    if (stored) {
-        songHistory = JSON.parse(stored);
-    }
+    if (stored) songHistory = JSON.parse(stored);
 }
 
 function renderHistory() {
-    if (!historyContainer) return;
+    const container = document.getElementById('historyContainer');
+    if (!container) return;
     
-    historyContainer.innerHTML = '';
+    container.innerHTML = '';
     
     if (songHistory.length === 0) {
-        historyContainer.innerHTML = '<p class="text-center">История пока пуста</p>';
+        container.innerHTML = '<p class="text-center">История пока пуста</p>';
         return;
     }
     
     songHistory.forEach(song => {
-        const songElement = document.createElement('div');
-        songElement.className = 'historic-item';
-        songElement.innerHTML = `
-            <div class="cover-historic" style="background-image: url('${URL_COVER}');"></div>
+        const el = document.createElement('div');
+        el.className = 'historic-item';
+        el.innerHTML = `
+            <div class="cover-historic" style="background-image: url('img/cover.png');"></div>
             <div class="music-info">
                 <div class="song">${escapeHtml(song.title)}</div>
                 <div class="artist">${escapeHtml(song.artist) || '—'}</div>
                 <div class="time">${song.timestamp}</div>
             </div>
         `;
-        historyContainer.appendChild(songElement);
+        container.appendChild(el);
     });
 }
 
-// Вспомогательная функция для защиты от XSS
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+function showHistory() {
+    renderHistory();
+    const modal = document.getElementById('historyModal');
+    if (modal) modal.style.display = 'block';
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
 }
 
 function updateUI() {
+    const liveIndicator = document.getElementById('liveIndicator');
+    if (liveIndicator) liveIndicator.textContent = LIVE_TEXT;
+    
     if (!SHOW_VOLUME) {
-        document.querySelector('.volume-container')?.remove();
+        const volContainer = document.querySelector('.volume-container');
+        if (volContainer) volContainer.style.display = 'none';
     }
     if (!SHOW_PLAYLIST) {
-        document.getElementById('showHistoryBtn')?.remove();
-    }
-    if (!SHOW_COVER) {
-        document.querySelector('.cover-album')?.remove();
-    }
-    
-    // Устанавливаем текст "Эфир"
-    if (liveIndicator) {
-        liveIndicator.textContent = LIVE_TEXT;
+        const historyBtn = document.getElementById('showHistoryBtn');
+        if (historyBtn) historyBtn.style.display = 'none';
     }
 }
-
-// Показать историю (вызывается из кнопки)
-window.showHistory = function() {
-    renderHistory();
-    if (historyModal) {
-        historyModal.style.display = 'block';
-    }
-}; 
