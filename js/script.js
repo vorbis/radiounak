@@ -20,12 +20,16 @@ function startMetadataCheck() {
     setInterval(() => {
         if (!audio || audio.paused) return;
         
+        // Добавляем User-Agent как у Winamp
         fetch(URL_STREAMING, { 
-            headers: { 'Icy-MetaData': '1' } 
+            headers: { 
+                'Icy-MetaData': '1',
+                'User-Agent': 'WinampMPEG/5.09'
+            } 
         })
         .then(res => {
             const title = res.headers.get('icy-title');
-            if (title && title !== 'RadioUnak') {
+            if (title && title !== 'RadioUnak' && title !== '') {
                 updateDisplay(title);
             }
         })
@@ -47,7 +51,6 @@ function updateDisplay(fullTitle) {
     document.getElementById('currentSong').textContent = title;
     document.getElementById('currentArtist').textContent = artist;
     
-    // Сохраняем в историю
     if (title && title !== 'RadioUnak') {
         addToHistory(title, artist);
     }
