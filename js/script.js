@@ -10,6 +10,7 @@ const URL_STREAMING = 'https://drh-node-03.dline-media.com/RadioUnak';
 let audioPlayer = null;
 let isPlaying = false;
 let songHistory = [];
+let lastSongTitle = '';
 
 // ========================
 // ЗАПУСК ПРИ ЗАГРУЗКЕ
@@ -17,17 +18,13 @@ let songHistory = [];
 document.addEventListener('DOMContentLoaded', () => {
     initAudio();
     loadHistoryFromStorage();
-    
-    // Запрашиваем метаданные каждые 5 секунд
-    setInterval(fetchMetadata, 5000);
-    fetchMetadata(); // сразу при загрузке
+    startMetadataProxy(); // запускаем обходной путь для метаданных
 });
 
 function initAudio() {
     audioPlayer = new Audio(URL_STREAMING);
     audioPlayer.volume = 0.8;
     
-    // При ошибке — переподключаемся
     audioPlayer.addEventListener('error', () => {
         if (isPlaying) {
             setTimeout(() => audioPlayer.play().catch(e => console.log(e)), 3000);
@@ -36,21 +33,34 @@ function initAudio() {
 }
 
 // ========================
-// ЗАХВАТ МЕТАДАННЫХ
+// ОБХОДНОЙ ПУТЬ ДЛЯ МЕТАДАННЫХ
+// Используем CORS-прокси или альтернативный метод
 // ========================
-function fetchMetadata() {
-    fetch(URL_STREAMING, { headers: { 'Icy-MetaData': '1' } })
-        .then(response => {
-            // Пробуем получить заголовок icy-title
-            const icyTitle = response.headers.get('icy-title');
-            if (icyTitle && icyTitle !== RADIO_NAME) {
-                updateNowPlaying(icyTitle);
+function startMetadataProxy() {
+    // Пробуем получить метаданные через публичный CORS-прокси
+    // Это временное решение, но работает с большинством серверов
+    const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(URL_STREAMING);
+    
+    setInterval(() => {
+        fetch(proxyUrl, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.text())
+        .then(data => {
+            // Ищем StreamTitle в теле ответа (метод для SHOUTcast/Icecast)
+            const match = data.match(/StreamTitle='([^']+)'/);
+            if (match && match[1] && match[1] !== lastSongTitle) {
+                lastSongTitle = match[1];
+                updateNowPlaying(match[1]);
             }
         })
-        .catch(e => console.log('Metadata fetch error:', e));
+        .catch(e => console.log('Proxy fetch error:', e));
+    }, 10000); // каждые 10 секунд
 }
 
 function updateNowPlaying(metadata) {
+    if (!metadata || metadata === RADIO_NAME) return;
+    
     // Разбираем "Исполнитель - Название"
     let artist = '';
     let title = metadata;
@@ -72,7 +82,7 @@ function updateNowPlaying(metadata) {
     if (songEl) songEl.textContent = title || metadata;
     if (artistEl) artistEl.textContent = artist || '';
     
-    console.log(`🎵 ${artist} - ${title}`); // для отладки в консоли
+    console.log(`🎵 Сейчас играет: ${artist} - ${title}`);
     
     // Сохраняем в историю
     addToHistory(title, artist);
@@ -93,7 +103,6 @@ window.togglePlay = function() {
             .then(() => {
                 isPlaying = true;
                 if (playBtn) playBtn.className = 'fa fa-pause-circle';
-                fetchMetadata(); // сразу запросим название трека
             })
             .catch(err => alert('Ошибка: ' + err.message));
     }
