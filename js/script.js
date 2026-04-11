@@ -11,6 +11,7 @@ let audioPlayer = null;
 let isPlaying = false;
 let songHistory = [];
 let lastSongTitle = '';
+let metadataInterval = null;
 
 // ========================
 // ЗАПУСК ПРИ ЗАГРУЗКЕ
@@ -18,14 +19,19 @@ let lastSongTitle = '';
 document.addEventListener('DOMContentLoaded', () => {
     initAudio();
     loadHistoryFromStorage();
-    startMetadataProxy(); // запускаем обходной путь для метаданных
 });
 
 function initAudio() {
     audioPlayer = new Audio(URL_STREAMING);
     audioPlayer.volume = 0.8;
     
+    // Когда поток начинает играть, запускаем прослушку метаданных
+    audioPlayer.addEventListener('play', () => {
+        startMetadataListening();
+    });
+    
     audioPlayer.addEventListener('error', () => {
+        console.log('Ошибка потока');
         if (isPlaying) {
             setTimeout(() => audioPlayer.play().catch(e => console.log(e)), 3000);
         }
@@ -33,46 +39,75 @@ function initAudio() {
 }
 
 // ========================
-// ОБХОДНОЙ ПУТЬ ДЛЯ МЕТАДАННЫХ
-// Используем CORS-прокси или альтернативный метод
+// ПРОСЛУШКА МЕТАДАННЫХ ИЗ АУДИОПОТОКА
 // ========================
-function startMetadataProxy() {
-    // Пробуем получить метаданные через публичный CORS-прокси
-    // Это временное решение, но работает с большинством серверов
-    const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(URL_STREAMING);
+function startMetadataListening() {
+    if (metadataInterval) clearInterval(metadataInterval);
     
-    setInterval(() => {
-        fetch(proxyUrl, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(response => response.text())
-        .then(data => {
-            // Ищем StreamTitle в теле ответа (метод для SHOUTcast/Icecast)
-            const match = data.match(/StreamTitle='([^']+)'/);
-            if (match && match[1] && match[1] !== lastSongTitle) {
-                lastSongTitle = match[1];
-                updateNowPlaying(match[1]);
+    // Каждые 8 секунд пытаемся извлечь метаданные из текущего источника
+    metadataInterval = setInterval(() => {
+        if (!audioPlayer || !audioPlayer.src) return;
+        
+        // Пробуем получить метаданные через fetch с правильными заголовками
+        fetch(URL_STREAMING, {
+            method: 'GET',
+            headers: {
+                'Icy-MetaData': '1',
+                'User-Agent': 'WinampMPEG/5.09',
+                'Accept': '*/*'
             }
         })
-        .catch(e => console.log('Proxy fetch error:', e));
-    }, 10000); // каждые 10 секунд
+        .then(response => {
+            // Проверяем заголовки Icecast/SHOUTcast
+            const icyTitle = response.headers.get('icy-title');
+            if (icyTitle && icyTitle !== lastSongTitle) {
+                lastSongTitle = icyTitle;
+                updateNowPlaying(icyTitle);
+                return;
+            }
+            
+            // Если заголовка нет, пробуем прочитать тело ответа (для SHOUTcast v1)
+            return response.text();
+        })
+        .then(body => {
+            if (body && typeof body === 'string') {
+                // Ищем StreamTitle в теле (SHOUTcast style)
+                const match = body.match(/StreamTitle='([^']+)'/);
+                if (match && match[1] && match[1] !== lastSongTitle) {
+                    lastSongTitle = match[1];
+                    updateNowPlaying(match[1]);
+                }
+            }
+        })
+        .catch(e => console.log('Metadata fetch error:', e));
+    }, 8000);
 }
 
 function updateNowPlaying(metadata) {
-    if (!metadata || metadata === RADIO_NAME) return;
+    if (!metadata || metadata === RADIO_NAME || metadata === '') return;
     
     // Разбираем "Исполнитель - Название"
     let artist = '';
     let title = metadata;
     
-    if (metadata.includes(' - ')) {
-        const parts = metadata.split(' - ');
-        artist = parts[0];
-        title = parts[1];
-    } else if (metadata.includes(' – ')) {
-        const parts = metadata.split(' – ');
-        artist = parts[0];
-        title = parts[1];
+    // Пробуем разные разделители
+    const separators = [' - ', ' – ', ' — ', ': '];
+    for (const sep of separators) {
+        if (metadata.includes(sep)) {
+            const parts = metadata.split(sep);
+            artist = parts[0];
+            title = parts[1];
+            break;
+        }
+    }
+    
+    // Если артист не найден, пробуем искать в скобках (например "Artist (Title)")
+    if (!artist && metadata.includes('(') && metadata.includes(')')) {
+        const match = metadata.match(/^(.+?)\s*\((.+?)\)/);
+        if (match) {
+            artist = match[1];
+            title = match[2];
+        }
     }
     
     // Обновляем HTML
@@ -82,7 +117,7 @@ function updateNowPlaying(metadata) {
     if (songEl) songEl.textContent = title || metadata;
     if (artistEl) artistEl.textContent = artist || '';
     
-    console.log(`🎵 Сейчас играет: ${artist} - ${title}`);
+    console.log(`🎵 ${artist} - ${title}`);
     
     // Сохраняем в историю
     addToHistory(title, artist);
@@ -98,25 +133,29 @@ window.togglePlay = function() {
         audioPlayer.pause();
         isPlaying = false;
         if (playBtn) playBtn.className = 'fa fa-play-circle';
+        if (metadataInterval) clearInterval(metadataInterval);
     } else {
         audioPlayer.play()
             .then(() => {
                 isPlaying = true;
                 if (playBtn) playBtn.className = 'fa fa-pause-circle';
+                startMetadataListening();
             })
-            .catch(err => alert('Ошибка: ' + err.message));
+            .catch(err => {
+                console.error('Ошибка:', err);
+                alert('Не удалось подключиться к радиостанции. Проверьте интернет.');
+            });
     }
 };
 
 // ========================
-// ИСТОРИЯ (8 треков)
+// ИСТОРИЯ
 // ========================
 function addToHistory(title, artist) {
-    if (!title || title === RADIO_NAME) return;
+    if (!title || title === RADIO_NAME || title === '...') return;
     
     const song = { title, artist, time: new Date().toLocaleTimeString() };
     
-    // Не дублируем последний трек
     if (songHistory.length > 0 && songHistory[0].title === title) return;
     
     songHistory.unshift(song);
