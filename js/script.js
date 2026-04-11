@@ -5,94 +5,56 @@ const RADIO_NAME = 'RadioUnak';
 const URL_STREAMING = 'https://drh-node-03.dline-media.com/RadioUnak';
 
 // ========================
-// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
+// ПЕРЕМЕННЫЕ
 // ========================
 let audioPlayer = null;
 let isPlaying = false;
 let songHistory = [];
-let currentMetadata = { title: '...', artist: '...' };
 
 // ========================
-// ИНИЦИАЛИЗАЦИЯ
+// ЗАПУСК ПРИ ЗАГРУЗКЕ
 // ========================
 document.addEventListener('DOMContentLoaded', () => {
     initAudio();
-    initEventListeners();
     loadHistoryFromStorage();
-    startMetadataPolling(); // начинаем активно опрашивать метаданные
+    
+    // Запрашиваем метаданные каждые 5 секунд
+    setInterval(fetchMetadata, 5000);
+    fetchMetadata(); // сразу при загрузке
 });
 
 function initAudio() {
     audioPlayer = new Audio(URL_STREAMING);
     audioPlayer.volume = 0.8;
     
+    // При ошибке — переподключаемся
     audioPlayer.addEventListener('error', () => {
-        console.log('Ошибка потока, переподключение...');
         if (isPlaying) {
-            setTimeout(() => {
-                audioPlayer.play().catch(e => console.log('Ошибка переподключения:', e));
-            }, 3000);
+            setTimeout(() => audioPlayer.play().catch(e => console.log(e)), 3000);
         }
     });
 }
 
-function initEventListeners() {
-    // Отключаем кнопку LETRA, если она ещё есть
-    const lyricsLink = document.querySelector('.lyrics');
-    if (lyricsLink) {
-        lyricsLink.addEventListener('click', (e) => {
-            e.preventDefault();
-        });
-    }
-}
-
 // ========================
-// АКТИВНЫЙ ЗАХВАТ МЕТАДАННЫХ (КАЖДЫЕ 5 СЕКУНД)
+// ЗАХВАТ МЕТАДАННЫХ
 // ========================
-function startMetadataPolling() {
-    // Первый запрос сразу после загрузки
-    fetchMetadata();
-    // Затем каждые 5 секунд
-    setInterval(fetchMetadata, 5000);
-}
-
 function fetchMetadata() {
-    // Пытаемся получить метаданные через специальный запрос к Icecast-серверу
-    fetch(URL_STREAMING, { 
-        headers: { 
-            'Icy-MetaData': '1'
-        }
-    })
-    .then(response => {
-        // Проверяем заголовки Icecast
-        const icyTitle = response.headers.get('icy-title');
-        if (icyTitle && icyTitle !== RADIO_NAME && icyTitle !== '') {
-            parseAndSetSong(icyTitle);
-            return;
-        }
-        
-        // Если заголовка icy-title нет, пробуем прочитать тело ответа (для некоторых серверов)
-        return response.text();
-    })
-    .then(body => {
-        if (body && typeof body === 'string') {
-            // Ищем StreamTitle в теле ответа (метод для SHOUTcast)
-            const match = body.match(/StreamTitle='([^']+)'/);
-            if (match && match[1]) {
-                parseAndSetSong(match[1]);
+    fetch(URL_STREAMING, { headers: { 'Icy-MetaData': '1' } })
+        .then(response => {
+            // Пробуем получить заголовок icy-title
+            const icyTitle = response.headers.get('icy-title');
+            if (icyTitle && icyTitle !== RADIO_NAME) {
+                updateNowPlaying(icyTitle);
             }
-        }
-    })
-    .catch(e => console.log('Не удалось получить метаданные:', e));
+        })
+        .catch(e => console.log('Metadata fetch error:', e));
 }
 
-function parseAndSetSong(metadata) {
-    if (!metadata || metadata === RADIO_NAME || metadata === '') return;
-    
-    let title = metadata;
+function updateNowPlaying(metadata) {
+    // Разбираем "Исполнитель - Название"
     let artist = '';
+    let title = metadata;
     
-    // Пробуем разные разделители
     if (metadata.includes(' - ')) {
         const parts = metadata.split(' - ');
         artist = parts[0];
@@ -101,47 +63,26 @@ function parseAndSetSong(metadata) {
         const parts = metadata.split(' – ');
         artist = parts[0];
         title = parts[1];
-    } else if (metadata.includes(' — ')) {
-        const parts = metadata.split(' — ');
-        artist = parts[0];
-        title = parts[1];
     }
     
-    // Если ничего не распарсилось, считаем всю строку названием
-    if (artist === '' && title === metadata) {
-        title = metadata;
-        artist = '';
-    }
+    // Обновляем HTML
+    const songEl = document.getElementById('currentSong');
+    const artistEl = document.getElementById('currentArtist');
     
-    // Обновляем отображение, только если информация изменилась
-    if (currentMetadata.title === title && currentMetadata.artist === artist) return;
+    if (songEl) songEl.textContent = title || metadata;
+    if (artistEl) artistEl.textContent = artist || '';
     
-    currentMetadata = { title, artist };
+    console.log(`🎵 ${artist} - ${title}`); // для отладки в консоли
     
-    const currentSongEl = document.getElementById('currentSong');
-    const currentArtistEl = document.getElementById('currentArtist');
-    
-    if (currentSongEl) currentSongEl.textContent = title || '—';
-    if (currentArtistEl) currentArtistEl.textContent = artist || '—';
-    
-    console.log(`Сейчас играет: ${artist} - ${title}`);
-    
-    // Добавляем в историю
-    if (title && title !== '—' && title !== RADIO_NAME) {
-        addToHistory(title, artist);
-    }
+    // Сохраняем в историю
+    addToHistory(title, artist);
 }
 
 // ========================
-// ФУНКЦИЯ PLAY/PAUSE
+// PLAY/PAUSE
 // ========================
 window.togglePlay = function() {
     const playBtn = document.getElementById('playerButton');
-    
-    if (!audioPlayer) {
-        console.error('Аудиоплеер не инициализирован');
-        return;
-    }
     
     if (isPlaying) {
         audioPlayer.pause();
@@ -152,39 +93,32 @@ window.togglePlay = function() {
             .then(() => {
                 isPlaying = true;
                 if (playBtn) playBtn.className = 'fa fa-pause-circle';
-                // При запуске воспроизведения сразу запрашиваем метаданные
-                fetchMetadata();
+                fetchMetadata(); // сразу запросим название трека
             })
-            .catch(error => {
-                console.error('Ошибка воспроизведения:', error);
-                alert('Не удалось подключиться к радиостанции.');
-            });
+            .catch(err => alert('Ошибка: ' + err.message));
     }
 };
 
 // ========================
-// ИСТОРИЯ (без изменений)
+// ИСТОРИЯ (8 треков)
 // ========================
-function addToHistory(songTitle, songArtist) {
-    if (!songTitle || songTitle === '...' || songTitle === RADIO_NAME) return;
+function addToHistory(title, artist) {
+    if (!title || title === RADIO_NAME) return;
     
-    const song = {
-        title: songTitle,
-        artist: songArtist || '',
-        timestamp: new Date().toLocaleTimeString()
-    };
+    const song = { title, artist, time: new Date().toLocaleTimeString() };
     
-    if (songHistory.length > 0 && songHistory[0].title === songTitle) return;
+    // Не дублируем последний трек
+    if (songHistory.length > 0 && songHistory[0].title === title) return;
     
     songHistory.unshift(song);
     if (songHistory.length > 8) songHistory.pop();
+    localStorage.setItem('radio_history', JSON.stringify(songHistory));
     
-    localStorage.setItem('radio_song_history', JSON.stringify(songHistory));
     renderHistory();
 }
 
 function loadHistoryFromStorage() {
-    const stored = localStorage.getItem('radio_song_history');
+    const stored = localStorage.getItem('radio_history');
     if (stored) {
         songHistory = JSON.parse(stored);
         renderHistory();
@@ -192,23 +126,20 @@ function loadHistoryFromStorage() {
 }
 
 function renderHistory() {
-    const historyContainer = document.getElementById('historicSong');
-    if (!historyContainer) return;
+    const container = document.getElementById('historicSong');
+    if (!container) return;
     
-    const articles = historyContainer.querySelectorAll('article');
+    const articles = container.querySelectorAll('article');
     
     for (let i = 0; i < articles.length; i++) {
-        const article = articles[i];
+        const art = articles[i];
         const song = songHistory[i];
-        
-        const songDiv = article.querySelector('.song');
-        const artistDiv = article.querySelector('.artist');
-        const coverDiv = article.querySelector('.cover-historic');
+        const songDiv = art.querySelector('.song');
+        const artistDiv = art.querySelector('.artist');
         
         if (song) {
             if (songDiv) songDiv.textContent = song.title;
             if (artistDiv) artistDiv.textContent = song.artist || '—';
-            if (coverDiv) coverDiv.style.backgroundImage = "url('img/cover.png')";
         } else {
             if (songDiv) songDiv.textContent = '—';
             if (artistDiv) artistDiv.textContent = '—';
