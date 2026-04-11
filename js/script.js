@@ -1,174 +1,92 @@
 // ========================
-// НАСТРОЙКИ
+// ПРОСТОЙ И НАДЁЖНЫЙ ПЛЕЕР
 // ========================
-const RADIO_NAME = 'RadioUnak';
 const URL_STREAMING = 'https://drh-node-03.dline-media.com/RadioUnak';
-
-// ========================
-// ПЕРЕМЕННЫЕ
-// ========================
-let audioPlayer = null;
+let audio = null;
 let isPlaying = false;
-let songHistory = [];
-let lastSongTitle = '';
-let metadataInterval = null;
+let history = [];
 
-// ========================
-// ЗАПУСК ПРИ ЗАГРУЗКЕ
-// ========================
+// Загрузка страницы
 document.addEventListener('DOMContentLoaded', () => {
-    initAudio();
-    loadHistoryFromStorage();
+    audio = new Audio(URL_STREAMING);
+    audio.volume = 0.8;
+    
+    loadHistory();
+    startMetadataCheck();
 });
 
-function initAudio() {
-    audioPlayer = new Audio(URL_STREAMING);
-    audioPlayer.volume = 0.8;
-    
-    // Когда поток начинает играть, запускаем прослушку метаданных
-    audioPlayer.addEventListener('play', () => {
-        startMetadataListening();
-    });
-    
-    audioPlayer.addEventListener('error', () => {
-        console.log('Ошибка потока');
-        if (isPlaying) {
-            setTimeout(() => audioPlayer.play().catch(e => console.log(e)), 3000);
-        }
-    });
-}
-
-// ========================
-// ПРОСЛУШКА МЕТАДАННЫХ ИЗ АУДИОПОТОКА
-// ========================
-function startMetadataListening() {
-    if (metadataInterval) clearInterval(metadataInterval);
-    
-    // Каждые 8 секунд пытаемся извлечь метаданные из текущего источника
-    metadataInterval = setInterval(() => {
-        if (!audioPlayer || !audioPlayer.src) return;
+// Проверка метаданных каждые 10 секунд
+function startMetadataCheck() {
+    setInterval(() => {
+        if (!audio || audio.paused) return;
         
-        // Пробуем получить метаданные через fetch с правильными заголовками
-        fetch(URL_STREAMING, {
-            method: 'GET',
-            headers: {
-                'Icy-MetaData': '1',
-                'User-Agent': 'WinampMPEG/5.09',
-                'Accept': '*/*'
+        fetch(URL_STREAMING, { 
+            headers: { 'Icy-MetaData': '1' } 
+        })
+        .then(res => {
+            const title = res.headers.get('icy-title');
+            if (title && title !== 'RadioUnak') {
+                updateDisplay(title);
             }
         })
-        .then(response => {
-            // Проверяем заголовки Icecast/SHOUTcast
-            const icyTitle = response.headers.get('icy-title');
-            if (icyTitle && icyTitle !== lastSongTitle) {
-                lastSongTitle = icyTitle;
-                updateNowPlaying(icyTitle);
-                return;
-            }
-            
-            // Если заголовка нет, пробуем прочитать тело ответа (для SHOUTcast v1)
-            return response.text();
-        })
-        .then(body => {
-            if (body && typeof body === 'string') {
-                // Ищем StreamTitle в теле (SHOUTcast style)
-                const match = body.match(/StreamTitle='([^']+)'/);
-                if (match && match[1] && match[1] !== lastSongTitle) {
-                    lastSongTitle = match[1];
-                    updateNowPlaying(match[1]);
-                }
-            }
-        })
-        .catch(e => console.log('Metadata fetch error:', e));
-    }, 8000);
+        .catch(e => console.log('Metadata error:', e));
+    }, 10000);
 }
 
-function updateNowPlaying(metadata) {
-    if (!metadata || metadata === RADIO_NAME || metadata === '') return;
-    
-    // Разбираем "Исполнитель - Название"
+// Обновление экрана
+function updateDisplay(fullTitle) {
     let artist = '';
-    let title = metadata;
+    let title = fullTitle;
     
-    // Пробуем разные разделители
-    const separators = [' - ', ' – ', ' — ', ': '];
-    for (const sep of separators) {
-        if (metadata.includes(sep)) {
-            const parts = metadata.split(sep);
-            artist = parts[0];
-            title = parts[1];
-            break;
-        }
+    if (fullTitle.includes(' - ')) {
+        const parts = fullTitle.split(' - ');
+        artist = parts[0];
+        title = parts[1];
     }
     
-    // Если артист не найден, пробуем искать в скобках (например "Artist (Title)")
-    if (!artist && metadata.includes('(') && metadata.includes(')')) {
-        const match = metadata.match(/^(.+?)\s*\((.+?)\)/);
-        if (match) {
-            artist = match[1];
-            title = match[2];
-        }
-    }
-    
-    // Обновляем HTML
-    const songEl = document.getElementById('currentSong');
-    const artistEl = document.getElementById('currentArtist');
-    
-    if (songEl) songEl.textContent = title || metadata;
-    if (artistEl) artistEl.textContent = artist || '';
-    
-    console.log(`🎵 ${artist} - ${title}`);
+    document.getElementById('currentSong').textContent = title;
+    document.getElementById('currentArtist').textContent = artist;
     
     // Сохраняем в историю
-    addToHistory(title, artist);
+    if (title && title !== 'RadioUnak') {
+        addToHistory(title, artist);
+    }
 }
 
-// ========================
-// PLAY/PAUSE
-// ========================
+// Play/Pause
 window.togglePlay = function() {
-    const playBtn = document.getElementById('playerButton');
+    const btn = document.getElementById('playerButton');
     
     if (isPlaying) {
-        audioPlayer.pause();
+        audio.pause();
         isPlaying = false;
-        if (playBtn) playBtn.className = 'fa fa-play-circle';
-        if (metadataInterval) clearInterval(metadataInterval);
+        btn.className = 'fa fa-play-circle';
     } else {
-        audioPlayer.play()
+        audio.play()
             .then(() => {
                 isPlaying = true;
-                if (playBtn) playBtn.className = 'fa fa-pause-circle';
-                startMetadataListening();
+                btn.className = 'fa fa-pause-circle';
             })
-            .catch(err => {
-                console.error('Ошибка:', err);
-                alert('Не удалось подключиться к радиостанции. Проверьте интернет.');
-            });
+            .catch(e => alert('Ошибка: ' + e.message));
     }
 };
 
-// ========================
-// ИСТОРИЯ
-// ========================
+// История
 function addToHistory(title, artist) {
-    if (!title || title === RADIO_NAME || title === '...') return;
+    if (!title || title === 'RadioUnak') return;
+    if (history.length > 0 && history[0].title === title) return;
     
-    const song = { title, artist, time: new Date().toLocaleTimeString() };
+    history.unshift({ title, artist, time: new Date().toLocaleTimeString() });
+    if (history.length > 8) history.pop();
     
-    if (songHistory.length > 0 && songHistory[0].title === title) return;
-    
-    songHistory.unshift(song);
-    if (songHistory.length > 8) songHistory.pop();
-    localStorage.setItem('radio_history', JSON.stringify(songHistory));
-    
+    localStorage.setItem('radio_history', JSON.stringify(history));
     renderHistory();
 }
 
-function loadHistoryFromStorage() {
-    const stored = localStorage.getItem('radio_history');
-    if (stored) {
-        songHistory = JSON.parse(stored);
+function loadHistory() {
+    const saved = localStorage.getItem('radio_history');
+    if (saved) {
+        history = JSON.parse(saved);
         renderHistory();
     }
 }
@@ -178,19 +96,18 @@ function renderHistory() {
     if (!container) return;
     
     const articles = container.querySelectorAll('article');
-    
     for (let i = 0; i < articles.length; i++) {
         const art = articles[i];
-        const song = songHistory[i];
+        const song = history[i];
         const songDiv = art.querySelector('.song');
         const artistDiv = art.querySelector('.artist');
         
         if (song) {
-            if (songDiv) songDiv.textContent = song.title;
-            if (artistDiv) artistDiv.textContent = song.artist || '—';
+            songDiv.textContent = song.title;
+            artistDiv.textContent = song.artist || '—';
         } else {
-            if (songDiv) songDiv.textContent = '—';
-            if (artistDiv) artistDiv.textContent = '—';
+            songDiv.textContent = '—';
+            artistDiv.textContent = '—';
         }
     }
 }
