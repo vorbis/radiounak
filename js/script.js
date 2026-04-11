@@ -10,26 +10,21 @@ const URL_STREAMING = 'https://drh-node-03.dline-media.com/RadioUnak';
 let audioPlayer = null;
 let isPlaying = false;
 let songHistory = [];
+let currentMetadata = { title: '...', artist: '...' };
 
 // ========================
-// ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ
+// ИНИЦИАЛИЗАЦИЯ
 // ========================
 document.addEventListener('DOMContentLoaded', () => {
     initAudio();
     initEventListeners();
     loadHistoryFromStorage();
-    updateSongInfo();
+    startMetadataPolling(); // начинаем активно опрашивать метаданные
 });
 
 function initAudio() {
     audioPlayer = new Audio(URL_STREAMING);
-    
-    const volumeSlider = document.getElementById('volume');
-    if (volumeSlider) {
-        audioPlayer.volume = volumeSlider.value / 100;
-    } else {
-        audioPlayer.volume = 0.8;
-    }
+    audioPlayer.volume = 0.8;
     
     audioPlayer.addEventListener('error', () => {
         console.log('Ошибка потока, переподключение...');
@@ -39,42 +34,106 @@ function initAudio() {
             }, 3000);
         }
     });
-    
-    audioPlayer.addEventListener('loadedmetadata', () => {
-        updateSongInfo();
-    });
-    
-    setInterval(updateSongInfo, 10000);
 }
 
 function initEventListeners() {
-    // ===== ПОЛЗУНОК ГРОМКОСТИ =====
-    const volumeSlider = document.getElementById('volume');
-    const volIndicator = document.getElementById('volIndicator');
-    
-    if (volumeSlider) {
-        volumeSlider.addEventListener('input', (e) => {
-            const val = e.target.value;
-            if (audioPlayer) audioPlayer.volume = val / 100;
-            if (volIndicator) volIndicator.textContent = val;
-        });
-        
-        if (volIndicator) volIndicator.textContent = volumeSlider.value;
-    }
-    
-    // ===== ОТКЛЮЧАЕМ КНОПКУ "LETRA" =====
+    // Отключаем кнопку LETRA, если она ещё есть
     const lyricsLink = document.querySelector('.lyrics');
     if (lyricsLink) {
         lyricsLink.addEventListener('click', (e) => {
             e.preventDefault();
-            console.log('Функция текстов песен отключена');
         });
     }
 }
 
 // ========================
-// ГЛАВНАЯ ФУНКЦИЯ PLAY/PAUSE
-// Вызывается из onclick в HTML
+// АКТИВНЫЙ ЗАХВАТ МЕТАДАННЫХ (КАЖДЫЕ 5 СЕКУНД)
+// ========================
+function startMetadataPolling() {
+    // Первый запрос сразу после загрузки
+    fetchMetadata();
+    // Затем каждые 5 секунд
+    setInterval(fetchMetadata, 5000);
+}
+
+function fetchMetadata() {
+    // Пытаемся получить метаданные через специальный запрос к Icecast-серверу
+    fetch(URL_STREAMING, { 
+        headers: { 
+            'Icy-MetaData': '1'
+        }
+    })
+    .then(response => {
+        // Проверяем заголовки Icecast
+        const icyTitle = response.headers.get('icy-title');
+        if (icyTitle && icyTitle !== RADIO_NAME && icyTitle !== '') {
+            parseAndSetSong(icyTitle);
+            return;
+        }
+        
+        // Если заголовка icy-title нет, пробуем прочитать тело ответа (для некоторых серверов)
+        return response.text();
+    })
+    .then(body => {
+        if (body && typeof body === 'string') {
+            // Ищем StreamTitle в теле ответа (метод для SHOUTcast)
+            const match = body.match(/StreamTitle='([^']+)'/);
+            if (match && match[1]) {
+                parseAndSetSong(match[1]);
+            }
+        }
+    })
+    .catch(e => console.log('Не удалось получить метаданные:', e));
+}
+
+function parseAndSetSong(metadata) {
+    if (!metadata || metadata === RADIO_NAME || metadata === '') return;
+    
+    let title = metadata;
+    let artist = '';
+    
+    // Пробуем разные разделители
+    if (metadata.includes(' - ')) {
+        const parts = metadata.split(' - ');
+        artist = parts[0];
+        title = parts[1];
+    } else if (metadata.includes(' – ')) {
+        const parts = metadata.split(' – ');
+        artist = parts[0];
+        title = parts[1];
+    } else if (metadata.includes(' — ')) {
+        const parts = metadata.split(' — ');
+        artist = parts[0];
+        title = parts[1];
+    }
+    
+    // Если ничего не распарсилось, считаем всю строку названием
+    if (artist === '' && title === metadata) {
+        title = metadata;
+        artist = '';
+    }
+    
+    // Обновляем отображение, только если информация изменилась
+    if (currentMetadata.title === title && currentMetadata.artist === artist) return;
+    
+    currentMetadata = { title, artist };
+    
+    const currentSongEl = document.getElementById('currentSong');
+    const currentArtistEl = document.getElementById('currentArtist');
+    
+    if (currentSongEl) currentSongEl.textContent = title || '—';
+    if (currentArtistEl) currentArtistEl.textContent = artist || '—';
+    
+    console.log(`Сейчас играет: ${artist} - ${title}`);
+    
+    // Добавляем в историю
+    if (title && title !== '—' && title !== RADIO_NAME) {
+        addToHistory(title, artist);
+    }
+}
+
+// ========================
+// ФУНКЦИЯ PLAY/PAUSE
 // ========================
 window.togglePlay = function() {
     const playBtn = document.getElementById('playerButton');
@@ -85,74 +144,29 @@ window.togglePlay = function() {
     }
     
     if (isPlaying) {
-        // Останавливаем воспроизведение
         audioPlayer.pause();
         isPlaying = false;
-        if (playBtn) {
-            playBtn.className = 'fa fa-play-circle';
-        }
-        console.log('Воспроизведение остановлено');
+        if (playBtn) playBtn.className = 'fa fa-play-circle';
     } else {
-        // Запускаем воспроизведение
         audioPlayer.play()
             .then(() => {
                 isPlaying = true;
-                if (playBtn) {
-                    playBtn.className = 'fa fa-pause-circle';
-                }
-                console.log('Воспроизведение запущено');
+                if (playBtn) playBtn.className = 'fa fa-pause-circle';
+                // При запуске воспроизведения сразу запрашиваем метаданные
+                fetchMetadata();
             })
             .catch(error => {
                 console.error('Ошибка воспроизведения:', error);
-                alert('Не удалось подключиться к радиостанции.\nПроверьте интернет или URL потока.');
+                alert('Не удалось подключиться к радиостанции.');
             });
     }
 };
 
 // ========================
-// ИНФОРМАЦИЯ О ТРЕКЕ
-// ========================
-function updateSongInfo() {
-    fetch(URL_STREAMING, { headers: { 'Icy-MetaData': '1' } })
-        .then(response => {
-            const icyTitle = response.headers.get('icy-title');
-            if (icyTitle && icyTitle !== RADIO_NAME && icyTitle !== '') {
-                parseAndSetSong(icyTitle);
-            }
-        })
-        .catch(e => console.log('Не удалось получить метаданные:', e));
-}
-
-function parseAndSetSong(metadata) {
-    let title = metadata;
-    let artist = '';
-    
-    if (metadata.includes(' - ')) {
-        const parts = metadata.split(' - ');
-        artist = parts[0];
-        title = parts[1];
-    } else if (metadata.includes(' – ')) {
-        const parts = metadata.split(' – ');
-        artist = parts[0];
-        title = parts[1];
-    }
-    
-    const currentSongEl = document.getElementById('currentSong');
-    const currentArtistEl = document.getElementById('currentArtist');
-    
-    if (currentSongEl) currentSongEl.textContent = title;
-    if (currentArtistEl) currentArtistEl.textContent = artist || '—';
-    
-    if (title !== 'Song' && title !== '' && title !== RADIO_NAME) {
-        addToHistory(title, artist);
-    }
-}
-
-// ========================
-// ИСТОРИЯ
+// ИСТОРИЯ (без изменений)
 // ========================
 function addToHistory(songTitle, songArtist) {
-    if (!songTitle || songTitle === 'Song' || songTitle === RADIO_NAME) return;
+    if (!songTitle || songTitle === '...' || songTitle === RADIO_NAME) return;
     
     const song = {
         title: songTitle,
